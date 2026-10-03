@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html lang="ar">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>قلب الجاذبية</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='20' fill='%231a0033'/%3E%3Ccircle cx='50' cy='50' r='24' fill='%2300eaff'/%3E%3C/svg%3E">
+  <link rel="manifest" href="manifest.json">
+  <link rel="apple-touch-icon" href="icon-192.png">
+  <meta name="theme-color" content="#071a38">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: #000;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+    }
+    canvas {
+      border-radius: 12px;
+      box-shadow: 0 0 40px rgba(255, 200, 61, 0.25);
+      touch-action: none;
+      aspect-ratio: 9 / 16;
+      width: auto;
+      height: min(96vh, 170vw);
+      height: min(96dvh, 170vw);
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+  </style>
+</head>
+<body>
+
+  <canvas id="gameCanvas" width="360" height="640"></canvas>
+
+  <script>
+    const canvas = document.getElementById("gameCanvas");
+    const ctx = canvas.getContext("2d");
+    const W = 360, H = 640;                       // أبعاد اللعبة المنطقية
+    const dpr = Math.min(window.devicePixelRatio || 1, 3);
+    canvas.width = W * dpr;                       // دقة عالية للشاشات الحديثة
+    canvas.height = H * dpr;
+    function safeGet(k) { try { return localStorage.getItem(k); } catch (e) { return null; } }
+    function safeSet(k, v) { try { localStorage.setItem(k, v); } catch (e) {} }
+
+    // ==================== نسخة الإصدار: تبدأ كل البيانات من الصفر مرة واحدة ====================
+    // لا تغيّر هذا الرقم في التحديثات القادمة وإلا ضاعت نقاط اللاعبين. غيّره فقط إن أردت تصفيراً عمداً.
+    const RELEASE = "1.0";
+    if (safeGet("gravityFlipRelease") !== RELEASE) {
+      ["gravityFlipHighScore", "gravityFlipWallet", "gravityFlipBall", "gravityFlipPillar", "gravityFlipPlays"]
+        .forEach(k => { try { localStorage.removeItem(k); } catch (e) {} });
+      safeSet("gravityFlipRelease", RELEASE);
+    }
+
+    // ==================== نظام اللغات (عربي / إنجليزي) ====================
+    let lang = safeGet("gravityFlipLang") || "ar";
+
+    const texts = {
+      ar: {
+        title: "قلب الجاذبية",
+        instruction1: "👆 إلمس الشاشة عشان تقلب الجاذبية",
+        instruction2: "تفادَ الأعمدة الخضراء",
+        instruction3: "عندك 5 محاولات ❤️",
+        bestScore: "أفضل نتيجة: ",
+        startButton: "ابدأ اللعب",
+        scoreLabel: "النقاط: ",
+        bestLabel: "الأفضل: ",
+        crashed: "تحطمت!",
+        yourScore: "نقاطك: ",
+        newRecord: "🏆 رقم قياسي جديد!",
+        playAgain: "العب من جديد",
+        exitBtn: "خروج",
+        exitConfirm: "اضغط مرة ثانية",
+        enterBtn: "دخول",
+        exitedTitle: "توقفت اللعبة",
+        exitedSub: "شكرًا للعب معنا 🙌",
+        tapToLaunch: "إلمس الشاشة عشان تنطلق 🚀",
+        langBtn: "English",
+        pausedTitle: "إيقاف مؤقت ⏸",
+        resumeBtn: "متابعة اللعب",
+        shareBtn: "شارك نتيجتك 📤",
+        shareText: "حصلت على SCORE نقطة بلعبة قلب الجاذبية! جربها:",
+        copiedMsg: "✅ تم النسخ!",
+        totalPlays: "مرات اللعب: ",
+        milestones: ["رائع! 🔥", "ممتاز! ⭐", "لا يُصدّق! 💫", "بطل! 🏆", "أسطوري! 👑"]
+      },
+      en: {
+        title: "Gravity Flip",
+        instruction1: "👆 Tap the screen to flip gravity",
+        instruction2: "Avoid the green posts",
+        instruction3: "You have 5 lives ❤️",
+        bestScore: "Best score: ",
+        startButton: "Start Game",
+        scoreLabel: "Score: ",
+        bestLabel: "Best: ",
+        crashed: "Crashed!",
+        yourScore: "Your score: ",
+        newRecord: "🏆 New Record!",
+        playAgain: "Play Again",
+        exitBtn: "Exit",
+        exitConfirm: "Tap again",
+        enterBtn: "Enter",
+        exitedTitle: "Game Paused",
+        exitedSub: "Thanks for playing 🙌",
+        tapToLaunch: "Tap the screen to launch 🚀",
+        langBtn: "عربي",
+        pausedTitle: "Paused ⏸",
+        resumeBtn: "Resume",
+        shareBtn: "Share Score 📤",
+        shareText: "I scored SCORE points in Gravity Flip! Try it:",
+        copiedMsg: "✅ Copied!",
+        totalPlays: "Games played: ",
+        milestones: ["Awesome! 🔥", "Great! ⭐", "Incredible! 💫", "Champion! 🏆", "Legendary! 👑"]
+      }
+    };
+
+Object.assign(texts.ar, {"langBtn": "🌐 العربية", "lockerBtn": "جوائزي", "lockerTitle": "جوائزي", "walletLabel": "النقاط المجموعة: ", "ballSection": "لون الكرة", "pillarSection": "لون الأعمدة", "backBtn": "رجوع", "unlockedBall": "🔓 فتحت ألوان الكرة!", "unlockedPillar": "🔓 فتحت ألوان الأعمدة!", "unlockedGold": "🔓 فتحت الكرة الذهبية!"});
+    Object.assign(texts.en, {"langBtn": "🌐 English", "lockerBtn": "My Rewards", "lockerTitle": "My Rewards", "walletLabel": "Points collected: ", "ballSection": "Ball color", "pillarSection": "Post color", "backBtn": "Back", "unlockedBall": "🔓 Ball colors unlocked!", "unlockedPillar": "🔓 Post colors unlocked!", "unlockedGold": "🔓 Golden ball unlocked!"});
+    texts.fr = {"title": "Inversion de Gravité", "instruction1": "👆 Touche l'écran pour inverser la gravité", "instruction2": "Évite les poteaux verts", "instruction3": "Tu as 5 vies ❤️", "bestScore": "Meilleur score : ", "startButton": "Commencer", "scoreLabel": "Score : ", "bestLabel": "Record : ", "crashed": "Raté !", "yourScore": "Ton score : ", "newRecord": "🏆 Nouveau record !", "playAgain": "Rejouer", "exitBtn": "Quitter", "exitConfirm": "Touche encore", "enterBtn": "Entrer", "exitedTitle": "Jeu en pause", "exitedSub": "Merci d'avoir joué 🙌", "tapToLaunch": "Touche l'écran pour lancer 🚀", "langBtn": "🌐 Français", "pausedTitle": "Pause ⏸", "resumeBtn": "Reprendre", "shareBtn": "Partager 📤", "shareText": "J'ai marqué SCORE points à Gravity Flip ! Essaie :", "copiedMsg": "✅ Copié !", "totalPlays": "Parties jouées : ", "milestones": ["Génial ! 🔥", "Super ! ⭐", "Incroyable ! 💫", "Champion ! 🏆", "Légendaire ! 👑"], "lockerBtn": "Mes récompenses", "lockerTitle": "Mes récompenses", "walletLabel": "Points collectés : ", "ballSection": "Couleur du ballon", "pillarSection": "Couleur des poteaux", "backBtn": "Retour", "unlockedBall": "🔓 Couleurs du ballon débloquées !", "unlockedPillar": "🔓 Couleurs des poteaux débloquées !", "unlockedGold": "🔓 Ballon d'or débloqué !"};
+    texts.es = {"title": "Gira la Gravedad", "instruction1": "👆 Toca la pantalla para invertir la gravedad", "instruction2": "Evita los postes verdes", "instruction3": "Tienes 5 vidas ❤️", "bestScore": "Mejor puntuación: ", "startButton": "Empezar", "scoreLabel": "Puntos: ", "bestLabel": "Récord: ", "crashed": "¡Chocaste!", "yourScore": "Tus puntos: ", "newRecord": "🏆 ¡Nuevo récord!", "playAgain": "Jugar de nuevo", "exitBtn": "Salir", "exitConfirm": "Toca otra vez", "enterBtn": "Entrar", "exitedTitle": "Juego en pausa", "exitedSub": "Gracias por jugar 🙌", "tapToLaunch": "Toca la pantalla para lanzar 🚀", "langBtn": "🌐 Español", "pausedTitle": "Pausa ⏸", "resumeBtn": "Continuar", "shareBtn": "Compartir 📤", "shareText": "¡Hice SCORE puntos en Gravity Flip! Pruébalo:", "copiedMsg": "✅ ¡Copiado!", "totalPlays": "Partidas jugadas: ", "milestones": ["¡Genial! 🔥", "¡Muy bien! ⭐", "¡Increíble! 💫", "¡Campeón! 🏆", "¡Legendario! 👑"], "lockerBtn": "Mis premios", "lockerTitle": "Mis premios", "walletLabel": "Puntos acumulados: ", "ballSection": "Color del balón", "pillarSection": "Color de los postes", "backBtn": "Volver", "unlockedBall": "🔓 ¡Colores de balón desbloqueados!", "unlockedPillar": "🔓 ¡Colores de postes desbloqueados!", "unlockedGold": "🔓 ¡Balón de oro desbloqueado!"};
+    texts.pt = {"title": "Inverte a Gravidade", "instruction1": "👆 Toque na tela para inverter a gravidade", "instruction2": "Evite os postes verdes", "instruction3": "Você tem 5 vidas ❤️", "bestScore": "Melhor pontuação: ", "startButton": "Começar", "scoreLabel": "Pontos: ", "bestLabel": "Recorde: ", "crashed": "Bateu!", "yourScore": "Seus pontos: ", "newRecord": "🏆 Novo recorde!", "playAgain": "Jogar de novo", "exitBtn": "Sair", "exitConfirm": "Toque de novo", "enterBtn": "Entrar", "exitedTitle": "Jogo pausado", "exitedSub": "Obrigado por jogar 🙌", "tapToLaunch": "Toque na tela para lançar 🚀", "langBtn": "🌐 Português", "pausedTitle": "Pausa ⏸", "resumeBtn": "Continuar", "shareBtn": "Compartilhar 📤", "shareText": "Fiz SCORE pontos no Gravity Flip! Experimente:", "copiedMsg": "✅ Copiado!", "totalPlays": "Partidas jogadas: ", "milestones": ["Demais! 🔥", "Ótimo! ⭐", "Incrível! 💫", "Campeão! 🏆", "Lendário! 👑"], "lockerBtn": "Meus prêmios", "lockerTitle": "Meus prêmios", "walletLabel": "Pontos acumulados: ", "ballSection": "Cor da bola", "pillarSection": "Cor dos postes", "backBtn": "Voltar", "unlockedBall": "🔓 Cores da bola desbloqueadas!", "unlockedPillar": "🔓 Cores dos postes desbloqueadas!", "unlockedGold": "🔓 Bola de ouro desbloqueada!"};
+    texts.tr = {"title": "Yerçekimi Çevir", "instruction1": "👆 Yerçekimini çevirmek için ekrana dokun", "instruction2": "Yeşil direklerden kaç", "instruction3": "5 canın var ❤️", "bestScore": "En iyi skor: ", "startButton": "Oyuna Başla", "scoreLabel": "Puan: ", "bestLabel": "En iyi: ", "crashed": "Çarptın!", "yourScore": "Puanın: ", "newRecord": "🏆 Yeni rekor!", "playAgain": "Tekrar Oyna", "exitBtn": "Çık", "exitConfirm": "Tekrar dokun", "enterBtn": "Gir", "exitedTitle": "Oyun duraklatıldı", "exitedSub": "Oynadığın için teşekkürler 🙌", "tapToLaunch": "Fırlatmak için ekrana dokun 🚀", "langBtn": "🌐 Türkçe", "pausedTitle": "Duraklatıldı ⏸", "resumeBtn": "Devam Et", "shareBtn": "Paylaş 📤", "shareText": "Gravity Flip'te SCORE puan yaptım! Dene:", "copiedMsg": "✅ Kopyalandı!", "totalPlays": "Oynanan oyun: ", "milestones": ["Harika! 🔥", "Çok iyi! ⭐", "İnanılmaz! 💫", "Şampiyon! 🏆", "Efsane! 👑"], "lockerBtn": "Ödüllerim", "lockerTitle": "Ödüllerim", "walletLabel": "Toplanan puan: ", "ballSection": "Top rengi", "pillarSection": "Direk rengi", "backBtn": "Geri", "unlockedBall": "🔓 Top renkleri açıldı!", "unlockedPillar": "🔓 Direk renkleri açıldı!", "unlockedGold": "🔓 Altın top açıldı!"};
+    const LANGS = ["ar", "en", "fr", "es", "pt", "tr"];
+    if (!texts[lang]) lang = "ar";
+    function cycleLang() {
+      lang = LANGS[(LANGS.indexOf(lang) + 1) % LANGS.length];
+      safeSet("gravityFlipLang", lang);
+      document.title = t("title");
+    }
+
+    function t(key) {
+      return texts[lang][key];
+    }
+
+    // ==================== موسيقى القائمة (مولّدة بالكود، بدون ملفات) ====================
+    let audioUnlocked = false, musicOn = false, musicTimer = null, musicGain = null, musicNext = 0, musicStep = 0, noiseBuf = null;
+    const STEP_T = 60 / 104 / 2;
+    const CHORDS = [
+      { bass: 110,    arp: [220, 261.63, 329.63] },
+      { bass: 87.31,  arp: [174.61, 220, 261.63] },
+      { bass: 130.81, arp: [261.63, 329.63, 392] },
+      { bass: 98,     arp: [196, 246.94, 293.66] }
+    ];
+    const LEAD = [
+      [659.25, 0, 0, 587.33, 0, 523.25, 0, 0], [523.25, 0, 0, 587.33, 0, 659.25, 0, 0],
+      [783.99, 0, 0, 659.25, 0, 587.33, 0, 523.25], [587.33, 0, 0, 493.88, 0, 587.33, 0, 0]
+    ];
+    function note(f, t0, dur, type, vol) {
+      const o = audioCtx.createOscillator(), g = audioCtx.createGain();
+      o.type = type; o.frequency.value = f; o.connect(g); g.connect(musicGain);
+      g.gain.setValueAtTime(0.0001, t0); g.gain.linearRampToValueAtTime(vol, t0 + 0.01);
+      g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      o.start(t0); o.stop(t0 + dur + 0.02);
+    }
+    function noiseHit(t0, dur, vol, freq) {
+      if (!noiseBuf) {
+        noiseBuf = audioCtx.createBuffer(1, audioCtx.sampleRate * 0.3, audioCtx.sampleRate);
+        const d = noiseBuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+      }
+      const s = audioCtx.createBufferSource(), f = audioCtx.createBiquadFilter(), g = audioCtx.createGain();
+      s.buffer = noiseBuf; f.type = "bandpass"; f.frequency.value = freq;
+      s.connect(f); f.connect(g); g.connect(musicGain);
+      g.gain.setValueAtTime(vol, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
+      s.start(t0); s.stop(t0 + dur);
+    }
+    function scheduleStep(step, t0) {
+      const bar = Math.floor(step / 8) % 4, s = step % 8, c = CHORDS[bar];
+      if (s === 0 || s === 4) {
+        note(c.bass, t0, 0.45, "triangle", 0.34);
+        const o = audioCtx.createOscillator(), g = audioCtx.createGain();     // طبلة
+        o.frequency.setValueAtTime(140, t0); o.frequency.exponentialRampToValueAtTime(45, t0 + 0.12);
+        g.gain.setValueAtTime(0.5, t0); g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.15);
+        o.connect(g); g.connect(musicGain); o.start(t0); o.stop(t0 + 0.16);
+      }
+      note(c.arp[[0, 1, 2, 1, 2, 1, 2, 1][s]], t0, 0.28, "sine", 0.11);
+      if (LEAD[bar][s]) note(LEAD[bar][s], t0, 0.34, "triangle", 0.09);
+      if (s === 2 || s === 6) noiseHit(t0, 0.09, 0.28, 1800);                // تصفيق الجمهور
+      if (s % 2 === 1) noiseHit(t0, 0.03, 0.08, 7000);
+    }
+    function startMusic() {
+      if (musicOn) return;
+      musicOn = true;
+      musicGain = audioCtx.createGain();
+      musicGain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
+      musicGain.gain.linearRampToValueAtTime(0.55, audioCtx.currentTime + 0.5);
+      musicGain.connect(audioCtx.destination);
+      musicNext = audioCtx.currentTime + 0.08; musicStep = 0;
+      musicTimer = setInterval(() => {
+        while (musicNext < audioCtx.currentTime + 0.25) { scheduleStep(musicStep++, musicNext); musicNext += STEP_T; }
+      }, 60);
+    }
+    function stopMusic() {
+      if (!musicOn) return;
+      musicOn = false; clearInterval(musicTimer);
+      const g = musicGain, now = audioCtx.currentTime;
+      g.gain.cancelScheduledValues(now); g.gain.setValueAtTime(Math.max(g.gain.value, 0.0001), now);
+      g.gain.linearRampToValueAtTime(0.0001, now + 0.25);          // تختفي بنعومة عند بدء اللعب
+      setTimeout(() => g.disconnect(), 400);
+    }
+    function syncMusic() {
+      const want = soundEnabled && audioUnlocked && document.visibilityState === "visible" &&
+                   (gameState === "menu" || gameState === "ready" || gameState === "locker");
+      if (want) startMusic(); else stopMusic();
+    }
+
+    // ==================== نظام الصوت ====================
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    let soundEnabled = safeGet("gravityFlipSound") !== "off";
+    const canVibrate = "vibrate" in navigator;   // iOS والكمبيوتر لا يدعمانه فنخفي الزر
+    let vibrateEnabled = safeGet("gravityFlipVibrate") !== "off";
+
+    function playTone(frequency, duration, type = "sine", delay = 0) {
+      if (!soundEnabled) return;
+      setTimeout(() => {
+        const oscillator = audioCtx.createOscillator();
+        const gainNode = audioCtx.createGain();
+        oscillator.type = type;
+        oscillator.frequency.value = frequency;
+        oscillator.connect(gainNode);
+        gainNode.connect(audioCtx.destination);
+        gainNode.gain.setValueAtTime(0.18, audioCtx.currentTime);
+        gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        oscillator.start();
+        oscillator.stop(audioCtx.currentTime + duration);
+      }, delay);
+    }
+
+    function playFlipSound() { playTone(500, 0.06, "square"); }
+    function playScoreSound() { playTone(750, 0.08, "sine"); playTone(950, 0.1, "sine", 60); }
+    function playCrashSound() { playTone(120, 0.35, "sawtooth"); }
+    function playWelcomeSound() {
+      // لحن ترحيبي قصير من 4 نغمات صاعدة
+      playTone(392, 0.12, "sine", 0);
+      playTone(494, 0.12, "sine", 120);
+      playTone(587, 0.12, "sine", 240);
+      playTone(784, 0.2, "sine", 360);
+    }
+
+    // ==================== حالة اللعبة ====================
+    // menu (القائمة الرئيسية) / ready (جاهزة، الجاذبية متوقفة بانتظار أول لمسة)
+    // playing (يلعب) / exited (تم الخروج) / gameover (انتهت)
+    let gameState = "menu";
+    let exitConfirmTimer = 0; // عداد تنازلي لتأكيد الخروج (لازم ضغطتين خلال فترة قصيرة)
+
+    // ==================== إعدادات الكرة ====================
+    const ball = { x: 90, y: H / 2, radius: 15, vy: 0 };
+    const hitR = ball.radius - 4;      // صندوق تصادم أصغر قليلاً = عدالة أكثر
+    // حركة الكرة: هادئة في البداية ثم تتصاعد تدريجياً مع النقاط (حتى 60 نقطة)
+    const BALL_START = { gravity: 0.22, kick: 2.4, maxVy: 4.5 };
+    const BALL_END   = { gravity: 0.50, kick: 3.4, maxVy: 6.5 };
+    let currentGravity = BALL_START.gravity, flipKick = BALL_START.kick, maxVy = BALL_START.maxVy;
+    function applyBallDifficulty(sc) {
+      const t = Math.min(1, sc / 60);
+      currentGravity = BALL_START.gravity + (BALL_END.gravity - BALL_START.gravity) * t;
+      flipKick = BALL_START.kick + (BALL_END.kick - BALL_START.kick) * t;
+      maxVy = BALL_START.maxVy + (BALL_END.maxVy - BALL_START.maxVy) * t;
+    }
+    let gravityDir = 1;
+    let trail = [];
+    let ballAngle = 0, bgScroll = 0;
+
+    // ==================== الخزانة: النقاط تتجمع وتفتح الألوان ====================
+    let wallet = parseInt(safeGet("gravityFlipWallet")) || 0;
+    let selBall = parseInt(safeGet("gravityFlipBall")) || 0;
+    let selPillar = parseInt(safeGet("gravityFlipPillar")) || 0;
+    const wb = ["#ffffff", "#c9d3df"];
+    const BALLS = [
+      { req: 0,   patch: "#15181d", body: wb, glow: "255,255,255" },
+      { req: 50,  patch: "#d62828", body: wb, glow: "255,120,120" },
+      { req: 50,  patch: "#1d4ed8", body: wb, glow: "120,160,255" },
+      { req: 50,  patch: "#15803d", body: wb, glow: "120,255,170" },
+      { req: 50,  patch: "#7e22ce", body: wb, glow: "200,140,255" },
+      { req: 100, patch: "#6b4a00", body: ["#fff3b0", "#d9a406"], glow: "255,210,60" }   // الكرة الذهبية
+    ];
+    const PILLARS = [
+      { req: 0,  c: ["#064d2b", "#1fbf6b", "#17a05a"], line: "#032614" },
+      { req: 75, c: ["#0b2a6b", "#3b82f6", "#2563eb"], line: "#06163a" },
+      { req: 75, c: ["#6b0f12", "#ef4444", "#dc2626"], line: "#3a0709" },
+      { req: 75, c: ["#3b0f6b", "#a855f7", "#8b5cf6"], line: "#1e0838" },
+      { req: 75, c: ["#7a3a00", "#fb923c", "#f97316"], line: "#3d1d00" }
+    ];
+    if (!BALLS[selBall] || wallet < BALLS[selBall].req) selBall = 0;
+    if (!PILLARS[selPillar] || wallet < PILLARS[selPillar].req) selPillar = 0;
+    let toastText = null, toastFrames = 0;
+    function checkUnlock(w) {
+      const key = w === 50 ? "unlockedBall" : w === 75 ? "unlockedPillar" : w === 100 ? "unlockedGold" : null;
+      if (key) { toastText = t(key); toastFrames = 240; }
+    }
+    function lockerItems() {
+      const it = [];
+      BALLS.forEach((b, i) => it.push({ k: "ball", i, x: [70, 180, 290][i % 3], y: 215 + Math.floor(i / 3) * 92 }));
+      PILLARS.forEach((p, i) => it.push({ k: "pillar", i, x: 52 + i * 64, y: 420 }));
+      return it;
+    }
+    const lockerBack = { x: W / 2 - 85, y: 560, w: 170, h: 46 };
+
+    // ==================== الحواجز ====================
+    let obstacles = [];
+    const obstacleWidth = 55;
+    const gapHeight = 220;
+    let obstacleSpeed = 1.6;
+    let spawnTimer = 0;
+    let spawnInterval = 150;
+
+    function spawnObstacle() {
+      const margin = 60;
+      const gapTop = margin + Math.random() * (H - gapHeight - margin * 2);
+      obstacles.push({ x: W, gapTop, gapBottom: gapTop + gapHeight, width: obstacleWidth, passed: false });
+    }
+
+    // ==================== النقاط والأرواح ====================
+    let score = 0;
+    let highScore = parseInt(safeGet("gravityFlipHighScore")) || 0;
+    let isNewHighScore = false;
+    const maxLives = 5;
+    let lives = maxLives;
+    let invulnerableFrames = 0;
+
+    // ==================== رسائل الإنجاز ====================
+    let milestoneText = null;
+    let milestoneOpacity = 0;
+    let milestoneY = 0;
+
+    function checkMilestone() {
+      if (score > 0 && score % 10 === 0) {
+        const messages = t("milestones");
+        milestoneText = messages[Math.floor(Math.random() * messages.length)];
+        milestoneOpacity = 1;
+        milestoneY = H / 2 - 60;
+      }
+    }
+    function updateMilestone() {
+      if (milestoneOpacity > 0) { milestoneOpacity -= 0.015; milestoneY -= 0.4; }
+    }
+
+    // ==================== اهتزاز الشاشة ====================
+    let shakeFrames = 0;
+    function triggerShake() { shakeFrames = 15; }
+
+    // ==================== اهتزاز فعلي بالموبايل (Vibration API) ====================
+    // بعض المتصفحات (خاصة iOS Safari) ما تدعم هالخاصية، فنتأكد أول قبل ما نستخدمها
+    function vibrateDevice(pattern) {
+      if (vibrateEnabled && canVibrate) {
+        navigator.vibrate(pattern);
+      }
+    }
+
+    // ==================== تجميد لحظي عند الاصطدام (Hit-stop) ====================
+    // تقنية شائعة بالألعاب: نجمّد الحركة لعدد قليل من الفريمات عند أي اصطدام
+    // عشان اللحظة "تحس فيها" أكتر قبل ما يبدأ الاهتزاز والتصحيح
+    let hitstopFrames = 0;
+    function triggerHitstop() { hitstopFrames = 4; }
+
+    // ==================== نبضة ضوء احتفالية عند رقم قياسي جديد ====================
+    let recordFlashOpacity = 0;
+
+    // ==================== تأثير "قفزة" حجم الكرة عند كل قلب جاذبية ====================
+    let ballScale = 1;
+
+    // ==================== أدوات مساعدة للأزرار المكدّسة ====================
+    function isInRect(px, py, r) {
+      return px >= r.x && px <= r.x + r.w && py >= r.y && py <= r.y + r.h;
+    }
+
+    // ترجع مواقع مجموعة أزرار مكدّسة فوق بعض بمنتصف الشاشة أفقيًا
+    function getStackedButtons(count, startY, width = 170, height = 46, gap = 14) {
+      const rects = [];
+      for (let i = 0; i < count; i++) {
+        rects.push({ x: W / 2 - width / 2, y: startY + i * (height + gap), w: width, h: height });
+      }
+      return rects;
+    }
+
+    function drawButton(rect, label, bgColor = "#ffc83d", textColor = "black") {
+      ctx.fillStyle = bgColor;
+      drawRoundedRect(rect.x, rect.y, rect.w, rect.h, 10);
+      ctx.fillStyle = textColor;
+      let fs = 17;                       // يصغّر الخط تلقائياً إن كان النص أطول من الزر
+      ctx.font = "bold 17px Arial";
+      while (fs > 11 && ctx.measureText(label).width > rect.w - 16) { fs--; ctx.font = "bold " + fs + "px Arial"; }
+      ctx.textAlign = "center";
+      ctx.fillText(label, rect.x + rect.w / 2, rect.y + rect.h / 2 + 6);
+    }
+
+    // ==================== إعادة ضبط متغيرات اللعب (تُستخدم عند كل دخول جديد) ====================
+    function resetGameVars() {
+      ball.y = H / 2;
+      ball.vy = 0;
+      gravityDir = 1;
+      trail = [];
+      obstacles = [];
+      obstacleSpeed = 1.6;
+      spawnTimer = 0;
+      score = 0;
+      isNewHighScore = false;
+      lives = maxLives;
+      invulnerableFrames = 0;
+      applyBallDifficulty(0);
+      milestoneOpacity = 0;
+      milestoneText = null;
+    }
+
+    // الدخول لحالة "جاهزة": تجهز كل شي وتوقف الجاذبية لحد أول لمسة
+    function goToReady() {
+      resetGameVars();
+      gameState = "ready";
+      playWelcomeSound();
+      requestWakeLock();
+    }
+
+    // ==================== منع قفل الشاشة التلقائي أثناء اللعب (Wake Lock API) ====================
+    // بعض المتصفحات القديمة ما تدعمها، فنتأكد أول بـ "in navigator"
+    let wakeLock = null;
+    async function requestWakeLock() {
+      try {
+        if ("wakeLock" in navigator && (!wakeLock || wakeLock.released)) {
+          wakeLock = await navigator.wakeLock.request("screen");
+        }
+      } catch (err) {
+        // لو فشل (مثلاً المتصفح رفض)، ما نوقف اللعبة، بس نتجاهل بهدوء
+      }
+    }
+    // الـ Wake Lock بينفك تلقائيًا لما نغيّر تبويب؛ نطلبه من جديد لما نرجع للصفحة
+    function releaseWakeLock() {
+      if (wakeLock) { wakeLock.release().catch(() => {}); wakeLock = null; }
+    }
+    function autoPause() {
+      if (gameState === "playing") gameState = "paused";
+    }
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "hidden") autoPause();
+      else if (gameState === "playing" || gameState === "paused" || gameState === "ready") requestWakeLock();
+    });
+    window.addEventListener("blur", autoPause);
+    window.addEventListener("pagehide", autoPause);
+
+    // ==================== عداد مرات اللعب الإجمالية (محفوظ دائمًا) ====================
+    let totalPlays = parseInt(safeGet("gravityFlipPlays")) || 0;
+
+    // ==================== مشاركة النتيجة ====================
+    let copiedMsgOpacity = 0; // رسالة "تم النسخ" تظهر مؤقتًا لو استخدمنا النسخ الاحتياطي
+
+    async function shareScore() {
+      const message = t("shareText").replace("SCORE", score);
+
+      // الطريقة الأولى: نافذة المشاركة الأصلية بالموبايل (واتساب، تويتر، رسائل...)
+      if (navigator.share) {
+        try {
+          await navigator.share({ title: t("title"), text: message });
+          return;
+        } catch (err) {
+          return; // المستخدم لغى المشاركة، ما داعي نسوي شي
+        }
+      }
+
+      // الطريقة الاحتياطية: نسخ النص للحافظة لو المتصفح ما يدعم المشاركة المباشرة
+      if (navigator.clipboard) {
+        try {
+          await navigator.clipboard.writeText(message);
+          copiedMsgOpacity = 1;
+        } catch (err) {
+          // تجاهل بهدوء لو فشل حتى النسخ
+        }
+      }
+    }
+
+    // ==================== أحداث اللمس ====================
+    function handlePress(clientX, clientY) {
+      audioUnlocked = true;   // المتصفح يسمح بالصوت بعد أول لمسة
+      if (audioCtx.state === "suspended") audioCtx.resume();
+
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = W / rect.width;
+      const scaleY = H / rect.height;
+      const tapX = (clientX - rect.left) * scaleX;
+      const tapY = (clientY - rect.top) * scaleY;
+
+      // زر كتم/تشغيل الصوت (ثابت أعلى يسار الشاشة بكل الحالات)
+      if (gameState !== "playing" && tapX >= 10 && tapX <= 46 && tapY >= 8 && tapY <= 44) {
+        soundEnabled = !soundEnabled;
+        safeSet("gravityFlipSound", soundEnabled ? "on" : "off");
+        return;
+      }
+
+      // زر الاهتزاز (مستقل عن الصوت)
+      if (gameState !== "playing" && canVibrate && tapX >= 50 && tapX <= 88 && tapY >= 8 && tapY <= 44) {
+        vibrateEnabled = !vibrateEnabled;
+        safeSet("gravityFlipVibrate", vibrateEnabled ? "on" : "off");
+        vibrateDevice(30); // تأكيد بالاهتزاز عند التشغيل
+        return;
+      }
+
+      // ---- الخزانة ----
+      if (gameState === "locker") {
+        if (isInRect(tapX, tapY, lockerBack)) { gameState = "menu"; return; }
+        for (const c of lockerItems()) {
+          const hit = c.k === "ball" ? Math.hypot(tapX - c.x, tapY - c.y) < 34 : Math.abs(tapX - c.x) < 30 && Math.abs(tapY - c.y) < 42;
+          if (!hit) continue;
+          const item = c.k === "ball" ? BALLS[c.i] : PILLARS[c.i];
+          if (wallet >= item.req) {
+            if (c.k === "ball") { selBall = c.i; safeSet("gravityFlipBall", c.i); }
+            else { selPillar = c.i; safeSet("gravityFlipPillar", c.i); }
+            playScoreSound();
+          }
+          return;
+        }
+        return;
+      }
+
+      // ---- القائمة الرئيسية ----
+      if (gameState === "menu") {
+        const [playBtn, lockerBtn, langBtn] = getStackedButtons(3, H / 2 + 110);
+        if (isInRect(tapX, tapY, playBtn)) { goToReady(); return; }
+        if (isInRect(tapX, tapY, lockerBtn)) { gameState = "locker"; return; }
+        if (isInRect(tapX, tapY, langBtn)) {
+          cycleLang();
+          document.title = t("title");
+          return;
+        }
+        return;
+      }
+
+      // ---- حالة "جاهزة": أي لمسة (غير الأزرار) تطلق اللعب فعليًا ----
+      if (gameState === "ready") {
+        gameState = "playing";
+        totalPlays++;
+        safeSet("gravityFlipPlays", totalPlays);
+        return;
+      }
+
+      // ---- أثناء اللعب الفعلي ----
+      if (gameState === "playing") {
+        // زر الإيقاف المؤقت (⏸) أعلى منتصف الشاشة
+        const pauseBtn = { x: W - 46, y: 8, w: 38, h: 36 };
+        if (isInRect(tapX, tapY, pauseBtn)) {
+          gameState = "paused";
+          return;
+        }
+        // أي لمسة تانية تقلب الجاذبية
+        flipGravity();
+        return;
+      }
+
+      // ---- حالة الإيقاف المؤقت ----
+      if (gameState === "paused") {
+        const [resumeBtn, exitBtn, langBtn] = getStackedButtons(3, H / 2 + 30);
+        if (isInRect(tapX, tapY, resumeBtn)) { gameState = "playing"; return; }
+        if (isInRect(tapX, tapY, exitBtn)) {
+          if (exitConfirmTimer > 0) {
+            gameState = "exited";
+            releaseWakeLock();
+            exitConfirmTimer = 0;
+          } else {
+            exitConfirmTimer = 90;
+          }
+          return;
+        }
+        if (isInRect(tapX, tapY, langBtn)) {
+          cycleLang();
+          document.title = t("title");
+          return;
+        }
+        return;
+      }
+
+      // ---- شاشة نهاية اللعبة ----
+      if (gameState === "gameover") {
+        const [playAgainBtn, shareBtn, exitBtn, langBtn] = getStackedButtons(4, H / 2 + 20, 170, 42, 12);
+        if (isInRect(tapX, tapY, playAgainBtn)) { goToReady(); return; }
+        if (isInRect(tapX, tapY, shareBtn)) { shareScore(); return; }
+        if (isInRect(tapX, tapY, exitBtn)) {
+          if (exitConfirmTimer > 0) {
+            gameState = "exited";
+            releaseWakeLock();
+            exitConfirmTimer = 0;
+          } else {
+            exitConfirmTimer = 90; // حوالي ثانية ونص لتأكيد الضغطة الثانية
+          }
+          return;
+        }
+        if (isInRect(tapX, tapY, langBtn)) {
+          cycleLang();
+          document.title = t("title");
+          return;
+        }
+        return;
+      }
+
+      // ---- شاشة "تم الخروج" ----
+      if (gameState === "exited") {
+        const [enterBtn, langBtn] = getStackedButtons(2, H / 2 + 30);
+        if (isInRect(tapX, tapY, enterBtn)) { goToReady(); return; }
+        if (isInRect(tapX, tapY, langBtn)) {
+          cycleLang();
+          document.title = t("title");
+          return;
+        }
+        return;
+      }
+    }
+
+    canvas.addEventListener("touchstart", (e) => {
+      e.preventDefault();
+      const tp = e.changedTouches[0]; // اللمسة الجديدة وليس إصبعاً مضغوطاً من قبل
+      handlePress(tp.clientX, tp.clientY);
+    }, { passive: false });
+    canvas.addEventListener("mousedown", (e) => {
+      if (e.button === 0) handlePress(e.clientX, e.clientY);
+    });
+    document.addEventListener("keydown", (e) => {
+      if (!["Space", "ArrowUp", "ArrowDown", "Enter", "Escape", "KeyP"].includes(e.code)) return;
+      e.preventDefault();
+      if (e.repeat) return;
+      audioUnlocked = true;
+      if (audioCtx.state === "suspended") audioCtx.resume();
+      if (e.code === "Escape" || e.code === "KeyP") {
+        if (gameState === "playing") gameState = "paused";
+        else if (gameState === "paused") gameState = "playing";
+        return;
+      }
+      if (gameState === "playing" || gameState === "ready") handlePress(-100, -100); // قلب / بدء
+      else if (gameState === "paused") gameState = "playing";
+      else if (gameState === "locker") gameState = "menu";
+      else goToReady(); // menu / gameover / exited
+    });
+
+    // ==================== فحص تصادم دائرة مع مستطيل ====================
+    function circleRectCollide(cx, cy, r, rx, ry, rw, rh) {
+      const closestX = Math.max(rx, Math.min(cx, rx + rw));
+      const closestY = Math.max(ry, Math.min(cy, ry + rh));
+      const dx = cx - closestX;
+      const dy = cy - closestY;
+      return (dx * dx + dy * dy) < (r * r);
+    }
+
+    // ==================== لعب تجريبي تلقائي خلف القائمة ====================
+    const demo = { y: H / 2, vy: 0, dir: 1, cd: 0, obs: [] };
+    function demoStep() {
+      const sp = 1.7;
+      bgScroll += sp;
+      ballAngle += demo.vy * 0.015 + demo.dir * 0.03;
+      const last = demo.obs[demo.obs.length - 1];
+      if (!last || last.x <= W - 280) {
+        const gt = 60 + Math.random() * (H - gapHeight - 120);
+        demo.obs.push({ x: W, gapTop: gt, gapBottom: gt + gapHeight, width: obstacleWidth });
+      }
+      for (const o of demo.obs) o.x -= sp;
+      while (demo.obs.length && demo.obs[0].x + obstacleWidth < -10) demo.obs.shift();
+      const o = demo.obs.find(q => q.x + q.width + ball.radius > ball.x);
+      const target = o ? (o.gapTop + o.gapBottom) / 2 : H / 2;
+      if (demo.cd > 0) demo.cd--;
+      else if ((demo.y > target + 22 && demo.dir > 0) || (demo.y < target - 22 && demo.dir < 0)) {
+        demo.dir *= -1;
+        demo.vy = demo.dir > 0 ? Math.max(demo.vy, BALL_START.kick) : Math.min(demo.vy, -BALL_START.kick);
+        demo.cd = 8; ballScale = 1.4;
+      }
+      demo.vy = Math.max(-BALL_START.maxVy, Math.min(BALL_START.maxVy, demo.vy + BALL_START.gravity * demo.dir));
+      demo.y = Math.max(ball.radius, Math.min(H - ball.radius, demo.y + demo.vy));
+    }
+    function drawDemo() {
+      for (const o of demo.obs) drawPillar(o.x, o);
+      ctx.save(); ctx.translate(ball.x, demo.y); ctx.scale(ballScale, ballScale);
+      drawFootball(ball.radius); ctx.restore();
+    }
+
+    // ==================== قلب الجاذبية: استجابة فورية ====================
+    function flipGravity() {
+      gravityDir *= -1;
+      // عكس الاتجاه فوراً بدل انتظار تراكم السرعة (هذا سبب الإحساس بالتأخر)
+      ball.vy = gravityDir > 0 ? Math.max(ball.vy, flipKick) : Math.min(ball.vy, -flipKick);
+      playFlipSound();
+      vibrateDevice(15);
+      ballScale = 1.4;
+    }
+
+    // ==================== فقدان روح ====================
+    function loseLife() {
+      lives--;
+      playCrashSound();
+      triggerShake();
+      triggerHitstop();
+      vibrateDevice(80);
+      if (lives <= 0) { endGame(); return; }
+      // نعيد الكرة إلى منتصف فتحة أقرب حاجز قادم (وليس منتصف الشاشة) ونحافظ على اتجاه الجاذبية
+      const ahead = obstacles.find(o => o.x + o.width + ball.radius > ball.x);
+      ball.y = ahead ? (ahead.gapTop + ahead.gapBottom) / 2 : H / 2;
+      ball.vy = 0;
+      trail = [];
+      invulnerableFrames = 90;
+    }
+
+    function endGame() {
+      gameState = "gameover";
+      releaseWakeLock();
+      playCrashSound();
+      triggerShake();
+      triggerHitstop();
+      vibrateDevice([100, 40, 100]); // نمط اهتزاز مزدوج يدل على نهاية اللعبة
+      if (score > highScore) {
+        highScore = score;
+        isNewHighScore = true;
+        safeSet("gravityFlipHighScore", highScore);
+        recordFlashOpacity = 1; // نبضة ضوء احتفالية بالرقم القياسي الجديد
+      } else {
+        isNewHighScore = false;
+      }
+    }
+
+    // ==================== التحديث ====================
+    function update() {
+      // عدادات لازم تنقص دائمًا بكل الحالات، وإلا تضل "عالقة" لو اللعبة خرجت من وضع اللعب فجأة
+      if (exitConfirmTimer > 0) exitConfirmTimer--;
+      if (shakeFrames > 0) shakeFrames--;
+      if (recordFlashOpacity > 0) recordFlashOpacity -= 0.015;
+      if (copiedMsgOpacity > 0) copiedMsgOpacity -= 0.01;
+      ballScale += (1 - ballScale) * 0.25; // ترجع تدريجيًا لحجمها الطبيعي (1)
+      if (gameState === "menu") { demoStep(); return; }
+
+      // تجميد لحظي عند الاصطدام (Hit-stop): نوقف كل الفيزياء لعدد قليل من الفريمات
+      if (hitstopFrames > 0) { hitstopFrames--; return; }
+
+      if (gameState !== "playing") return;
+
+      ball.vy += currentGravity * gravityDir;
+      ball.vy = Math.max(-maxVy, Math.min(maxVy, ball.vy));
+      ball.y += ball.vy;
+      ballAngle += ball.vy * 0.015 + gravityDir * 0.03;
+      bgScroll += obstacleSpeed;
+
+      trail.push({ x: ball.x, y: ball.y, opacity: 1 });
+      if (trail.length > 18) trail.shift();
+      for (const tr of trail) tr.opacity -= 0.055;
+
+      if (invulnerableFrames > 0) {
+        // لا تنتهي الحماية والكرة داخل جدار حتى لا نخسر روحاً ثانية فوراً
+        const inWall = obstacles.some(o => ball.x + hitR > o.x && ball.x - hitR < o.x + o.width && (ball.y - hitR < o.gapTop || ball.y + hitR > o.gapBottom));
+        if (!(invulnerableFrames === 1 && inWall)) invulnerableFrames--;
+        // أثناء الحماية: الكرة لا تخرج من الشاشة
+        if (ball.y < ball.radius) { ball.y = ball.radius; ball.vy = 0; }
+        if (ball.y > H - ball.radius) { ball.y = H - ball.radius; ball.vy = 0; }
+      }
+
+      if (invulnerableFrames <= 0 && (ball.y - hitR < 0 || ball.y + hitR > H)) {
+        loseLife();
+        if (gameState !== "playing") return;
+      }
+
+      for (let i = obstacles.length - 1; i >= 0; i--) {
+        const o = obstacles[i];
+        o.x -= obstacleSpeed;
+
+        if (invulnerableFrames <= 0) {
+          const hitTop = circleRectCollide(ball.x, ball.y, hitR, o.x, 0, o.width, o.gapTop);
+          const hitBottom = circleRectCollide(ball.x, ball.y, hitR, o.x, o.gapBottom, o.width, H - o.gapBottom);
+          if (hitTop || hitBottom) {
+            loseLife();
+            if (gameState !== "playing") return;
+            break;
+          }
+        }
+
+        if (!o.passed && o.x + o.width < ball.x) {
+          o.passed = true;
+          score++;
+          wallet++; safeSet("gravityFlipWallet", wallet); checkUnlock(wallet);
+          playScoreSound();
+          checkMilestone();
+          obstacleSpeed = Math.min(4.5, 1.6 + score * 0.04);
+          applyBallDifficulty(score);
+        }
+        if (o.x + o.width < -5) obstacles.splice(i, 1);
+      }
+
+      const lastObstacle = obstacles[obstacles.length - 1];
+      const spacing = Math.max(230, 280 - score * 2); // مسافة ثابتة بين الحواجز مهما زادت السرعة
+      if (!lastObstacle || lastObstacle.x <= W - spacing) spawnObstacle();
+
+      updateMilestone();
+    }
+
+    // ==================== الرسم ====================
+    function drawRoundedRect(x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    let bgStatic = null, crowdTile = null;
+    function makeRng(seed) { let v = seed; return () => (v = (v * 16807) % 2147483647) / 2147483647; }
+    function mkLayer(w, h) {
+      const c = document.createElement("canvas");
+      c.width = w * dpr; c.height = h * dpr;
+      const x = c.getContext("2d"); x.scale(dpr, dpr);
+      return [c, x];
+    }
+    // ثيمة: ملعب كرة قدم ليلاً (تُرسم الطبقات الثابتة مرة واحدة فقط للأداء)
+    function buildBackground() {
+      const rnd = makeRng(7);
+      let [c, x] = mkLayer(W, H); bgStatic = c;
+      const sky = x.createLinearGradient(0, 0, 0, H);
+      sky.addColorStop(0, "#040a1c"); sky.addColorStop(0.6, "#0b2347"); sky.addColorStop(1, "#0d3b3a");
+      x.fillStyle = sky; x.fillRect(0, 0, W, H);
+      for (let i = 0; i < 45; i++) { x.fillStyle = "rgba(255,255,255," + (0.2 + rnd() * 0.5) + ")"; x.fillRect(rnd() * W, rnd() * 300, 1.5, 1.5); }
+      for (const lx of [34, W - 34]) {                         // أضواء الملعب
+        const g = x.createLinearGradient(lx, 78, W / 2, 470);
+        g.addColorStop(0, "rgba(255,250,210,0.24)"); g.addColorStop(1, "rgba(255,250,210,0)");
+        x.fillStyle = g; x.beginPath();
+        x.moveTo(lx - 12, 78); x.lineTo(lx + 12, 78); x.lineTo(W / 2 + 110, 470); x.lineTo(W / 2 - 110, 470); x.fill();
+        x.fillStyle = "#1b2a45"; x.fillRect(lx - 3, 92, 6, 384);
+        x.fillStyle = "#243556"; x.fillRect(lx - 19, 58, 38, 24);
+        x.shadowColor = "#fffbd0"; x.shadowBlur = 14; x.fillStyle = "#fffdf0";
+        for (let r = 0; r < 2; r++) for (let q = 0; q < 3; q++) { x.beginPath(); x.arc(lx - 11 + q * 11, 65 + r * 11, 3.2, 0, 7); x.fill(); }
+        x.shadowBlur = 0;
+      }
+      x.fillStyle = "#08122b";                                  // المدرجات
+      x.beginPath(); x.moveTo(0, 402); x.quadraticCurveTo(W / 2, 368, W, 402); x.lineTo(W, 478); x.lineTo(0, 478); x.fill();
+      x.strokeStyle = "rgba(120,200,255,0.35)"; x.lineWidth = 1.5;
+      x.beginPath(); x.moveTo(0, 402); x.quadraticCurveTo(W / 2, 368, W, 402); x.stroke();
+      const ads = ["#1e5bff", "#f4f4f4", "#e63946", "#ffd23b"];  // لوحات إعلانات عامة بلا علامات تجارية
+      for (let i = 0; i * 45 < W; i++) { x.fillStyle = ads[i % 4]; x.globalAlpha = 0.85; x.fillRect(i * 45, 462, 45, 14); }
+      x.globalAlpha = 1;
+      x.fillStyle = "#0e6b34"; x.fillRect(0, 476, W, H - 476);   // أرضية الملعب
+      const sh = x.createLinearGradient(0, 476, 0, H);
+      sh.addColorStop(0, "rgba(255,255,255,0.10)"); sh.addColorStop(1, "rgba(0,0,0,0.35)");
+      x.fillStyle = sh; x.fillRect(0, 476, W, H - 476);
+      x.fillStyle = "rgba(255,255,255,0.75)"; x.fillRect(0, 476, W, 1.5);
+
+      [c, x] = mkLayer(W, 56); crowdTile = c;                   // جمهور متحرك ببطء
+      const cols = ["#e63946", "#f4f4f4", "#ffd23b", "#1e90ff", "#2ecc71", "#ff8c42"];
+      for (let row = 0; row < 10; row++) for (let i = 0; i < 70; i++) {
+        x.globalAlpha = 0.5 + rnd() * 0.4; x.fillStyle = cols[Math.floor(rnd() * cols.length)];
+        x.beginPath(); x.arc(rnd() * W, row * 5.6 + 3, 1.7, 0, 7); x.fill();
+      }
+    }
+
+    function drawSceneBackground() {
+      if (!bgStatic) buildBackground();
+      ctx.drawImage(bgStatic, 0, 0, W, H);
+      const ra = (gameState === "playing" && hitstopFrames === 0) ? renderAlpha : 0;
+      const sc = bgScroll + obstacleSpeed * ra;
+      const co = (sc * 0.25) % W, bob = Math.sin(Date.now() / 260) * 1.2;
+      ctx.drawImage(crowdTile, -co, 404 + bob, W, 56);
+      ctx.drawImage(crowdTile, W - co, 404 + bob, W, 56);
+      const sw = 46, off = sc % (sw * 2);                       // خطوط العشب تتحرك مع اللعب
+      ctx.fillStyle = "rgba(255,255,255,0.05)";
+      for (let px = -off; px < W; px += sw * 2) ctx.fillRect(px, 477, sw, H - 477);
+      ctx.fillStyle = "rgba(0,0,0,0.12)";
+      for (let px = sw - off; px < W; px += sw * 2) ctx.fillRect(px, 477, sw, H - 477);
+    }
+
+    function drawPillar(ox, o) {
+      const w = o.width, P = PILLARS[selPillar];
+      const body = (y, h) => {
+        const g = ctx.createLinearGradient(ox, 0, ox + w, 0);
+        g.addColorStop(0, P.c[0]); g.addColorStop(0.35, P.c[1]); g.addColorStop(0.65, P.c[2]); g.addColorStop(1, P.c[0]);
+        ctx.save();
+        ctx.shadowColor = "rgba(0,0,0,0.55)"; ctx.shadowBlur = 12; ctx.shadowOffsetX = 3;
+        ctx.fillStyle = g; ctx.fillRect(ox, y, w, h);
+        ctx.restore();
+        ctx.fillStyle = "rgba(255,255,255,0.07)";
+        for (let yy = y; yy < y + h; yy += 64) ctx.fillRect(ox, yy, w, Math.min(32, y + h - yy));
+        ctx.strokeStyle = P.line; ctx.lineWidth = 1.5; ctx.strokeRect(ox, y, w, h);
+      };
+      const cap = (y) => {
+        const g = ctx.createLinearGradient(0, y, 0, y + 16);
+        g.addColorStop(0, "#ffffff"); g.addColorStop(1, "#c9d3df");
+        ctx.fillStyle = g; drawRoundedRect(ox - 3, y, w + 6, 16, 5);
+        ctx.fillStyle = "#e0a800"; ctx.fillRect(ox - 3, y + 6, w + 6, 3);
+      };
+      body(0, o.gapTop); cap(o.gapTop - 16);
+      body(o.gapBottom, H - o.gapBottom); cap(o.gapBottom);
+    }
+
+    function pent(cx, cy, R, rot) {
+      ctx.beginPath();
+      for (let k = 0; k < 5; k++) {
+        const a = rot + k * 2 * Math.PI / 5, px = cx + Math.cos(a) * R, py = cy + Math.sin(a) * R;
+        if (k) ctx.lineTo(px, py); else ctx.moveTo(px, py);
+      }
+      ctx.closePath();
+    }
+    // كرة كلاسيكية بيضاء بخماسيات سوداء (نمط عام، بلا شعارات)
+    function drawFootball(r, b = BALLS[selBall]) {
+      ctx.save();
+      ctx.shadowColor = "rgba(" + b.glow + ",0.6)"; ctx.shadowBlur = 14;
+      ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.beginPath(); ctx.arc(0, 0, r, 0, Math.PI * 2); ctx.clip();
+      const g = ctx.createRadialGradient(-r * 0.35, -r * 0.4, r * 0.1, 0, 0, r);
+      g.addColorStop(0, b.body[0]); g.addColorStop(1, b.body[1]);
+      ctx.fillStyle = g; ctx.fillRect(-r, -r, 2 * r, 2 * r);
+      ctx.rotate(ballAngle);
+      ctx.fillStyle = b.patch; ctx.strokeStyle = b.patch; ctx.lineWidth = 1.1;
+      pent(0, 0, r * 0.36, -Math.PI / 2); ctx.fill();
+      for (let i = 0; i < 5; i++) {
+        const a = -Math.PI / 2 + i * 2 * Math.PI / 5, c = Math.cos(a), sn = Math.sin(a);
+        ctx.beginPath(); ctx.moveTo(c * r * 0.36, sn * r * 0.36); ctx.lineTo(c * r * 0.64, sn * r * 0.64); ctx.stroke();
+        pent(c * r * 0.98, sn * r * 0.98, r * 0.34, a + Math.PI); ctx.fill();
+      }
+      ctx.restore();
+      ctx.strokeStyle = "rgba(20,24,29,0.85)"; ctx.lineWidth = 1.3;
+      ctx.beginPath(); ctx.arc(0, 0, r - 0.6, 0, Math.PI * 2); ctx.stroke();
+      ctx.fillStyle = "rgba(255,255,255,0.55)";
+      ctx.beginPath(); ctx.ellipse(-r * 0.3, -r * 0.4, r * 0.22, r * 0.12, -0.6, 0, Math.PI * 2); ctx.fill();
+    }
+
+    function drawGameplayScene() {
+      const ra = (gameState === "playing" && hitstopFrames === 0) ? renderAlpha : 0;
+      const by = ball.y + ball.vy * ra;
+      for (const tr of trail) {
+        if (tr.opacity <= 0) continue;
+        ctx.globalAlpha = Math.max(0, tr.opacity);
+        ctx.fillStyle = "#ffe9a8";
+        ctx.beginPath();
+        ctx.arc(tr.x, tr.y, ball.radius * 0.6, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+
+      for (const o of obstacles) {
+        const ox = o.x - obstacleSpeed * ra;
+        drawPillar(ox, o);
+      }
+
+      const isBlinkFrame = invulnerableFrames > 0 && Math.floor(invulnerableFrames / 6) % 2 === 0;
+      if (!isBlinkFrame) {
+        ctx.save();
+        ctx.translate(ball.x, by);
+        ctx.scale(ballScale, ballScale); // تأثير "القفزة" عند القلب
+        drawFootball(ball.radius);
+        ctx.restore();
+      }
+
+      if (gameState === "playing") {
+        ctx.fillStyle = "white";
+        ctx.font = "bold 14px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(gravityDir === 1 ? "▼" : "▲", ball.x, by - (gravityDir === 1 ? -34 : 26));
+
+        // زر الإيقاف المؤقت (⏸) أعلى منتصف الشاشة
+        ctx.fillStyle = "rgba(255,255,255,0.12)";
+        drawRoundedRect(W - 46, 8, 38, 36, 8);
+        ctx.fillStyle = "white";
+        ctx.font = "16px Arial";
+        ctx.fillText("⏸", W - 27, 32);
+      }
+
+      if (toastFrames > 0) {
+        toastFrames--;
+        ctx.globalAlpha = Math.min(1, toastFrames / 30);
+        ctx.fillStyle = "rgba(0,0,0,0.6)"; drawRoundedRect(24, 82, W - 48, 34, 10);
+        ctx.fillStyle = "#ffc83d"; ctx.font = "bold 15px Arial"; ctx.textAlign = "center";
+        ctx.fillText(toastText, W / 2, 104);
+        ctx.globalAlpha = 1;
+      }
+
+      if (milestoneOpacity > 0) {
+        ctx.globalAlpha = Math.max(0, milestoneOpacity);
+        ctx.fillStyle = "#ffd93d";
+        ctx.font = "bold 32px Arial";
+        ctx.textAlign = "center";
+        ctx.shadowColor = "#ffd93d";
+        ctx.shadowBlur = 15;
+        ctx.fillText(milestoneText, W / 2, milestoneY);
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+      }
+
+      ctx.fillStyle = "rgba(255,255,255,0.08)";
+      const hudL = canVibrate ? 94 : 54, hudR = W - 52;
+      drawRoundedRect(hudL, 8, hudR - hudL, 36, 8);
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 19px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText(t("scoreLabel") + score, (hudL + hudR) / 2, 32);
+      ctx.font = "bold 14px Arial";
+      ctx.fillStyle = "rgba(255,255,255,0.8)";
+      ctx.fillText("❤️ " + lives + "    " + t("bestLabel") + highScore, (hudL + hudR) / 2, 64);
+    }
+
+    function draw() {
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.save();
+      if (shakeFrames > 0) {
+        ctx.translate((Math.random() - 0.5) * 10, (Math.random() - 0.5) * 10);
+      }
+
+      drawSceneBackground();
+
+      if (gameState === "menu") {
+        drawDemo();
+        ctx.fillStyle = "rgba(5,12,30,0.45)"; drawRoundedRect(20, H / 2 - 190, W - 40, 262, 16);
+        ctx.textAlign = "center";
+        ctx.fillStyle = "#ffc83d";
+        ctx.shadowColor = "#ffc83d";
+        ctx.shadowBlur = 20;
+        let tf = 34;                       // يصغّر العنوان تلقائياً إن كان طويلاً في لغة ما
+        ctx.font = "bold 34px Arial";
+        while (tf > 18 && ctx.measureText(t("title")).width > W - 50) { tf -= 2; ctx.font = "bold " + tf + "px Arial"; }
+        ctx.fillText(t("title"), W / 2, H / 2 - 160);
+        ctx.shadowBlur = 0;
+
+
+        ctx.fillStyle = "white";
+        ctx.font = "16px Arial";
+        ctx.fillText(t("instruction1"), W / 2, H / 2 - 40);
+        ctx.fillText(t("instruction2"), W / 2, H / 2 - 10);
+        ctx.fillText(t("instruction3"), W / 2, H / 2 + 20);
+
+        if (highScore > 0) {
+          ctx.fillStyle = "#ffd93d";
+          ctx.font = "bold 14px Arial";
+          ctx.fillText(t("bestScore") + highScore, W / 2, H / 2 + 55);
+        }
+        if (totalPlays > 0) {
+          ctx.fillStyle = "#666688";
+          ctx.font = "12px Arial";
+          ctx.fillText(t("totalPlays") + totalPlays, W / 2, H / 2 + 78);
+        }
+
+        const [playBtn, lockerBtn, langBtn] = getStackedButtons(3, H / 2 + 110);
+        drawButton(playBtn, t("startButton"), "#ffc83d", "black");
+        drawButton(lockerBtn, "🏆 " + t("lockerBtn") + " · " + wallet, "rgba(255,255,255,0.15)", "white");
+        drawButton(langBtn, t("langBtn"), "rgba(255,255,255,0.15)", "white");
+      }
+
+      else if (gameState === "locker") {
+        ctx.fillStyle = "rgba(5,12,30,0.8)"; ctx.fillRect(0, 0, W, H);
+        ctx.textAlign = "center"; ctx.fillStyle = "#ffc83d"; ctx.font = "bold 28px Arial";
+        ctx.fillText("🏆 " + t("lockerTitle"), W / 2, 78);
+        ctx.fillStyle = "#fff"; ctx.font = "bold 16px Arial";
+        ctx.fillText("👛 " + t("walletLabel") + wallet, W / 2, 110);
+        ctx.fillStyle = "#ffd93d"; ctx.font = "bold 15px Arial";
+        ctx.fillText(t("ballSection"), W / 2, 158);
+        ctx.fillText(t("pillarSection"), W / 2, 372);
+        ballAngle += 0.01;
+        for (const c of lockerItems()) {
+          const item = c.k === "ball" ? BALLS[c.i] : PILLARS[c.i];
+          const ok = wallet >= item.req, sel = c.k === "ball" ? c.i === selBall : c.i === selPillar;
+          ctx.save(); ctx.translate(c.x, c.y); if (!ok) ctx.globalAlpha = 0.35;
+          if (c.k === "ball") drawFootball(24, item);
+          else {
+            const g = ctx.createLinearGradient(-18, 0, 18, 0);
+            g.addColorStop(0, item.c[0]); g.addColorStop(0.4, item.c[1]); g.addColorStop(1, item.c[0]);
+            ctx.fillStyle = g; drawRoundedRect(-18, -34, 36, 68, 6);
+            ctx.strokeStyle = item.line; ctx.lineWidth = 1.5; ctx.strokeRect(-18, -34, 36, 68);
+          }
+          ctx.restore();
+          if (sel) {
+            ctx.strokeStyle = "#ffc83d"; ctx.lineWidth = 3; ctx.beginPath();
+            if (c.k === "ball") ctx.arc(c.x, c.y, 31, 0, 7); else ctx.rect(c.x - 23, c.y - 39, 46, 78);
+            ctx.stroke();
+          }
+          if (!ok) { ctx.fillStyle = "#fff"; ctx.font = "bold 12px Arial"; ctx.fillText("🔒 " + item.req, c.x, c.y + (c.k === "ball" ? 46 : 54)); }
+        }
+        drawButton(lockerBack, t("backBtn"), "#ffc83d", "black");
+      }
+
+      else if (gameState === "ready") {
+        drawGameplayScene();
+        ctx.fillStyle = "rgba(0,0,0,0.4)";
+        ctx.fillRect(-20, H / 2 - 50, W + 40, 80);
+        ctx.fillStyle = "#ffd93d";
+        ctx.font = "bold 18px Arial";
+        ctx.textAlign = "center";
+        ctx.fillText(t("tapToLaunch"), W / 2, H / 2 + 5);
+      }
+
+      else if (gameState === "playing") {
+        drawGameplayScene();
+      }
+
+      else if (gameState === "paused") {
+        drawGameplayScene(); // نعرض اللعبة "مجمّدة" بالخلفية
+        ctx.fillStyle = "rgba(0,0,0,0.75)";
+        ctx.fillRect(-20, -20, W + 40, H + 40);
+
+        ctx.fillStyle = "white";
+        ctx.textAlign = "center";
+        ctx.font = "bold 26px Arial";
+        ctx.fillText(t("pausedTitle"), W / 2, H / 2 - 70);
+
+        const [resumeBtn, exitBtn, langBtn] = getStackedButtons(3, H / 2 + 30);
+        drawButton(resumeBtn, t("resumeBtn"), "#ffc83d", "black");
+        drawButton(exitBtn, exitConfirmTimer > 0 ? t("exitConfirm") : t("exitBtn"), exitConfirmTimer > 0 ? "#ff3b3b" : "rgba(255,255,255,0.15)", "white");
+        drawButton(langBtn, t("langBtn"), "rgba(255,255,255,0.15)", "white");
+      }
+
+      else if (gameState === "gameover") {
+        drawGameplayScene();
+        ctx.fillStyle = "rgba(0,0,0,0.75)";
+        ctx.fillRect(-20, -20, W + 40, H + 40);
+
+        // نبضة ضوء ذهبية احتفالية تخف تدريجيًا، تظهر فقط لو كسرنا رقم قياسي جديد
+        if (recordFlashOpacity > 0) {
+          ctx.fillStyle = "#ffd93d";
+          ctx.globalAlpha = Math.max(0, recordFlashOpacity) * 0.35;
+          ctx.fillRect(-20, -20, W + 40, H + 40);
+          ctx.globalAlpha = 1;
+        }
+
+        ctx.fillStyle = "white";
+        ctx.textAlign = "center";
+        ctx.font = "bold 26px Arial";
+        ctx.fillText(t("crashed"), W / 2, H / 2 - 110);
+
+        ctx.font = "18px Arial";
+        ctx.fillText(t("yourScore") + score, W / 2, H / 2 - 80);
+
+        if (isNewHighScore) {
+          ctx.fillStyle = "#ffc83d";
+          ctx.font = "bold 15px Arial";
+          ctx.fillText(t("newRecord"), W / 2, H / 2 - 56);
+        } else {
+          ctx.fillStyle = "#aaaaaa";
+          ctx.font = "13px Arial";
+          ctx.fillText(t("bestScore") + highScore, W / 2, H / 2 - 56);
+        }
+
+        const [playAgainBtn, shareBtn, exitBtn, langBtn] = getStackedButtons(4, H / 2 + 20, 170, 42, 12);
+        drawButton(playAgainBtn, t("playAgain"), "#ffc83d", "black");
+        drawButton(shareBtn, t("shareBtn"), "#ffd93d", "black");
+        drawButton(exitBtn, exitConfirmTimer > 0 ? t("exitConfirm") : t("exitBtn"), exitConfirmTimer > 0 ? "#ff3b3b" : "rgba(255,255,255,0.15)", "white");
+        drawButton(langBtn, t("langBtn"), "rgba(255,255,255,0.15)", "white");
+
+        // رسالة "تم النسخ" تظهر مؤقتًا فوق الأزرار لو استخدمنا النسخ الاحتياطي للمشاركة
+        if (copiedMsgOpacity > 0) {
+          ctx.globalAlpha = Math.max(0, copiedMsgOpacity);
+          ctx.fillStyle = "#ffc83d";
+          ctx.font = "bold 14px Arial";
+          ctx.fillText(t("copiedMsg"), W / 2, H / 2 + 8);
+          ctx.globalAlpha = 1;
+        }
+      }
+
+      else if (gameState === "exited") {
+        ctx.fillStyle = "white";
+        ctx.textAlign = "center";
+        ctx.font = "bold 26px Arial";
+        ctx.fillText(t("exitedTitle"), W / 2, H / 2 - 100);
+        ctx.font = "16px Arial";
+        ctx.fillStyle = "#aaaaaa";
+        ctx.fillText(t("exitedSub"), W / 2, H / 2 - 65);
+
+        const [enterBtn, langBtn] = getStackedButtons(2, H / 2 + 30);
+        drawButton(enterBtn, t("enterBtn"), "#ffc83d", "black");
+        drawButton(langBtn, t("langBtn"), "rgba(255,255,255,0.15)", "white");
+      }
+
+      // زر كتم/تشغيل الصوت - ثابت فوق يسار الشاشة بكل الحالات
+      ctx.fillStyle = "rgba(255,255,255,0.12)";
+      ctx.globalAlpha = gameState === "playing" ? 0.35 : 1; // أزرار الإعدادات معطّلة أثناء اللعب
+      drawRoundedRect(8, 8, 38, 36, 8);
+      ctx.fillStyle = "white";
+      ctx.font = "18px Arial";
+      ctx.textAlign = "center";
+      ctx.fillText(soundEnabled ? "🔊" : "🔇", 27, 32);
+      if (canVibrate) {
+        ctx.fillStyle = "rgba(255,255,255,0.12)";
+        drawRoundedRect(50, 8, 38, 36, 8);
+        ctx.fillStyle = "white";
+        ctx.fillText(vibrateEnabled ? "📳" : "📴", 69, 32);
+      }
+      ctx.globalAlpha = 1;
+
+      ctx.restore();
+    }
+
+    // ==================== حلقة اللعبة ====================
+    // خطوة زمنية ثابتة (60 تحديث/ثانية) لتكون السرعة نفسها على كل الشاشات (60/90/120/144Hz)
+    const STEP = 1000 / 60;
+    let lastTime = 0, accumulator = 0, renderAlpha = 0;
+    function gameLoop(now) {
+      if (!lastTime) lastTime = now;
+      accumulator += Math.min(now - lastTime, 100);
+      lastTime = now;
+      while (accumulator >= STEP) { update(); accumulator -= STEP; }
+      renderAlpha = accumulator / STEP;
+      syncMusic();
+      draw();
+      requestAnimationFrame(gameLoop);
+    }
+    requestAnimationFrame(gameLoop);
+
+    if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+      window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => {}));
+    }
+  </script>
+
+</body>
+</html>
