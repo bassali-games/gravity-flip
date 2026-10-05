@@ -1,4 +1,4 @@
-const CACHE = "gravity-flip-v9";
+const CACHE = "gravity-flip-v10";
 const ASSETS = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png", "./icon-maskable-512.png"];
 
 self.addEventListener("install", (e) => {
@@ -16,6 +16,7 @@ self.addEventListener("activate", (e) => {
 // الشبكة أولاً (لتصل التحديثات)، ثم الكاش عند انقطاع الإنترنت
 self.addEventListener("fetch", (e) => {
   if (e.request.method !== "GET") return;
+  if (new URL(e.request.url).origin !== location.origin) return; // العداد وغيره: لا نتدخل
   e.respondWith(
     fetch(e.request)
       .then((res) => {

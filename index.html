@@ -10,6 +10,8 @@
   <meta name="theme-color" content="#071a38">
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
+  <script data-goatcounter="https://bassali-games.goatcounter.com/count"
+          async src="//gc.zgo.at/count.js"></script>
   <style>
     body {
       margin: 0;
@@ -448,11 +450,13 @@ Object.assign(texts.ar, {"langBtn": "🌐 العربية", "lockerBtn": "جوا�
 
     async function shareScore() {
       const message = t("shareText").replace("SCORE", score);
+      // رابط اللعبة (ref=share ليعرف العداد أن الزائر جاء من مشاركة لاعب)
+      const shareUrl = location.origin + location.pathname.replace(/index\.html$/, "") + "?ref=share";
 
       // الطريقة الأولى: نافذة المشاركة الأصلية بالموبايل (واتساب، تويتر، رسائل...)
       if (navigator.share) {
         try {
-          await navigator.share({ title: t("title"), text: message });
+          await navigator.share({ title: t("title"), text: message, url: shareUrl });
           return;
         } catch (err) {
           return; // المستخدم لغى المشاركة، ما داعي نسوي شي
@@ -462,7 +466,7 @@ Object.assign(texts.ar, {"langBtn": "🌐 العربية", "lockerBtn": "جوا�
       // الطريقة الاحتياطية: نسخ النص للحافظة لو المتصفح ما يدعم المشاركة المباشرة
       if (navigator.clipboard) {
         try {
-          await navigator.clipboard.writeText(message);
+          await navigator.clipboard.writeText(message + " " + shareUrl);
           copiedMsgOpacity = 1;
         } catch (err) {
           // تجاهل بهدوء لو فشل حتى النسخ
